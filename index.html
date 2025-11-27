@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Generador de Rutinas - Gym</title>
+  <style>
+    :root{--bg:#e9f2ff;--card:#fff;--accent:#0b63d6;--muted:#6b7280}
+    *{box-sizing:border-box}
+    body{font-family:Inter,Segoe UI,Helvetica,Arial,sans-serif;background:linear-gradient(180deg,var(--bg),#f8fbff);margin:0;color:#0b2540}
+    header{background:var(--accent);color:#fff;padding:28px 18px;text-align:center}
+    header h1{margin:0;font-size:clamp(20px,3.6vw,36px)}
+    .container{max-width:980px;margin:28px auto;padding:18px}
+    .card{background:var(--card);border-radius:12px;box-shadow:0 6px 20px rgba(11,38,64,0.08);padding:18px}
+    form .row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+    label{font-weight:600;font-size:14px}
+    input[type="number"],select{flex:1;padding:10px;border-radius:8px;border:1px solid #dbe7fb;background:#f8fbff}
+    .col{flex:1;min-width:160px}
+    .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    button{background:var(--accent);color:#fff;border:none;padding:10px 14px;border-radius:10px;font-weight:700;cursor:pointer}
+    button.secondary{background:#fff;color:var(--accent);border:1px solid rgba(11,99,214,0.12)}
+    .output{margin-top:18px}
+    .routine{border-radius:10px;padding:14px;background:linear-gradient(180deg,#ffffff, #f6fbff);margin-bottom:12px}
+    h2.section{font-size:18px;margin:8px 0}
+    .meta{color:var(--muted);font-size:14px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+    .exercise{padding:10px;border-radius:8px;border:1px dashed #d9eafc}
+    footer{font-size:13px;color:var(--muted);text-align:center;margin:22px 0}
+    @media (max-width:520px){.row{flex-direction:column}.controls{justify-content:stretch}}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Generador de Rutinas Personalizadas para Gimnasio</h1>
+    <p class="meta">Introduce los datos y genera un plan configurable por periodos (semanal, mensual).</p>
+  </header>
+
+  <main class="container">
+    <div class="card">
+      <form id="userForm" onsubmit="event.preventDefault(); generateRoutine();">
+        <div class="row">
+          <div class="col">
+            <label for="age">Edad</label>
+            <input id="age" type="number" min="12" max="100" value="25" required />
+          </div>
+          <div class="col">
+            <label for="weight">Peso (kg)</label>
+            <input id="weight" type="number" min="30" max="300" step="0.1" value="75" required />
+          </div>
+          <div class="col">
+            <label for="height">Estatura (cm)</label>
+            <input id="height" type="number" min="120" max="230" step="0.1" value="175" required />
+          </div>
+          <div class="col">
+            <label for="experience">Nivel de experiencia</label>
+            <select id="experience">
+              <option value="beginner">Principiante</option>
+              <option value="intermediate" selected>Intermedio</option>
+              <option value="advanced">Avanzado</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col">
+            <label for="goal">Objetivo</label>
+            <select id="goal">
+              <option value="general">General / Salud</option>
+              <option value="strength">Fuerza</option>
+              <option value="hypertrophy">Hipertrofia</option>
+              <option value="fatloss">Pérdida de grasa</option>
+            </select>
+          </div>
+          <div class="col">
+            <label for="period">Periodo</label>
+            <select id="period">
+              <option value="weekly">Semanal</option>
+              <option value="monthly">Mensual (4 semanas)</option>
+            </select>
+          </div>
+          <div class="col">
+            <label for="days">Días por semana</label>
+            <select id="days">
+              <option value="3">3</option>
+              <option value="4" selected>4</option>
+              <option value="5">5</option>
+              <option value="6">6</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button type="submit">Generar rutina</button>
+          <button type="button" class="secondary" onclick="downloadPlan()">Descargar JSON</button>
+          <div style="margin-left:auto;color:var(--muted);font-size:13px">Hecho para equipos — listo para GitHub</div>
+        </div>
+      </form>
+
+      <div class="output" id="output" aria-live="polite"></div>
+
+    </div>
+
+    <footer>Consejo: confirmar con un profesional de la salud antes de comenzar cualquier programa.</footer>
+  </main>
+
+  <script>
+    // Base de ejercicios (simplificada) — puedes ampliar esta lista y cambiar nombres/variantes.
+    const EXERCISES = {
+      push: ["Press de banca", "Press inclinado con mancuernas", "Fondos en paralelas", "Press militar"],
+      pull: ["Remo con barra", "Dominadas asistidas", "Jalón al pecho", "Face pulls"],
+      legs: ["Sentadillas", "Prensa de piernas", "Peso muerto rumano", "Zancadas"],
+      core: ["Plancha", "Crunch", "Elevación de piernas", "Russian twist"],
+      cardio: ["Caminata rápida", "Bicicleta estática", "Saltar la cuerda"]
+    };
+
+    let lastPlan = null;
+
+    function bmi(weightKg, heightCm){
+      const m = heightCm/100; return +(weightKg/(m*m)).toFixed(1);
+    }
+
+    function pick(arr, n){
+      const out=[]; const pool=[...arr];
+      while(out.length<n && pool.length){
+        const i=Math.floor(Math.random()*pool.length); out.push(pool.splice(i,1)[0]);
+      }
+      return out;
+    }
+
+    function generateRoutine(){
+      const age=Number(document.getElementById('age').value);
+      const weight=Number(document.getElementById('weight').value);
+      const height=Number(document.getElementById('height').value);
+      const experience=document.getElementById('experience').value;
+      const goal=document.getElementById('goal').value;
+      const period=document.getElementById('period').value;
+      const daysPerWeek=Number(document.getElementById('days').value);
+
+      const user={age,weight,height,experience,goal,period,daysPerWeek};
+      const imc=bmi(weight,height);
+
+      // Decide intensity / volume base on experience & goal
+      let intensity=1; // multiplier for sets/reps suggestions
+      if(experience==='beginner') intensity=0.8;
+      if(experience==='advanced') intensity=1.2;
+      // goal adjustments
+      let repRange = {low:8,high:12};
+      if(goal==='strength') repRange={low:3,high:6};
+      if(goal==='hypertrophy') repRange={low:6,high:12};
+      if(goal==='fatloss') repRange={low:10,high:15};
+
+      // Days split logic simple: choose popular splits
+      const splitsByDays = {
+        3: ['Full body','Full body','Full body'],
+        4: ['Upper','Lower','Upper','Lower'],
+        5: ['Push','Pull','Legs','Full body','Cardio/Core'],
+        6: ['Push','Pull','Legs','Push (lighter)','Pull (lighter)','Legs (lighter)']
+      };
+
+      const weekTemplate = splitsByDays[daysPerWeek] || splitsByDays[4];
+
+      // Build a week routine
+      const week = weekTemplate.map(dayName => {
+        let exercises = [];
+        if(dayName.toLowerCase().includes('push')) exercises = exercises.concat(pick(EXERCISES.push,3));
+        if(dayName.toLowerCase().includes('pull')) exercises = exercises.concat(pick(EXERCISES.pull,3));
+        if(dayName.toLowerCase().includes('leg')) exercises = exercises.concat(pick(EXERCISES.legs,3));
+        if(dayName.toLowerCase().includes('full')) exercises = exercises.concat(pick(EXERCISES.push,1), pick(EXERCISES.pull,1), pick(EXERCISES.legs,1));
+        if(dayName.toLowerCase().includes('cardio')) exercises = exercises.concat(pick(EXERCISES.cardio,1), pick(EXERCISES.core,1));
+        if(dayName.toLowerCase().includes('core')) exercises = exercises.concat(pick(EXERCISES.core,2));
+
+        // dedupe and flatten
+        exercises = Array.from(new Set([].concat(...exercises))).slice(0,6);
+
+        // set / rep suggestions
+        const sets = Math.max(2, Math.round(3 * intensity));
+        const repsLow = Math.max(3, Math.round(repRange.low / intensity));
+        const repsHigh = Math.max(repsLow+1, Math.round(repRange.high / intensity));
+
+        return {dayName,exercises,sets,reps:`${repsLow}-${repsHigh}`};
+      });
+
+      // If monthly requested, build 4-week plan with progressive overload guidance
+      let plan = {user,imc,period,weeks:[week]};
+      if(period==='monthly'){
+        plan.weeks = [];
+        for(let w=1;w<=4;w++){
+          // small progression: increase sets or reps slightly each week
+          const weekCopies = week.map(d => {
+            const extra = Math.floor((w-1)/2); // +1 set every two weeks
+            return {...d, sets: d.sets + extra, note: `Semana ${w} — ligera progresión respecto a la anterior`}
+          });
+          plan.weeks.push(weekCopies);
+        }
+      }
+
+      lastPlan = plan;
+      renderPlan(plan);
+    }
+
+    function renderPlan(plan){
+      const out = document.getElementById('output');
+      out.innerHTML = '';
+
+      const header = document.createElement('div'); header.className='meta';
+      header.innerHTML = `<strong>Edad:</strong> ${plan.user.age} — <strong>Peso:</strong> ${plan.user.weight}kg — <strong>Estatura:</strong> ${plan.user.height}cm — <strong>IMC:</strong> ${plan.imc}`;
+      out.appendChild(header);
+
+      if(plan.period==='weekly'){
+        out.appendChild(renderWeek(plan.weeks[0],1));
+      } else {
+        plan.weeks.forEach((w,idx)=> out.appendChild(renderWeek(w,idx+1)));
+      }
+
+      const notes = document.createElement('div'); notes.className='meta';
+      notes.style.marginTop='10px';
+      notes.innerHTML = `<strong>Notas:</strong> Ajusta cargas progresivamente, prioriza técnica y calienta 5-10 minutos antes de cada sesión.`;
+      out.appendChild(notes);
+    }
+
+    function renderWeek(week,weekNumber){
+      const container = document.createElement('div'); container.className='card';
+      const title = document.createElement('h2'); title.className='section';
+      title.textContent = weekNumber>1? `Semana ${weekNumber}` : 'Semana'; container.appendChild(title);
+
+      const grid = document.createElement('div'); grid.className='grid';
+      week.forEach(day => {
+        const d = document.createElement('div'); d.className='routine';
+        d.innerHTML = `<strong>${day.dayName}</strong> <div class="meta">Sets: ${day.sets} • Reps: ${day.reps}${day.note? ' • '+day.note: ''}</div>`;
+        const list = document.createElement('div'); list.style.marginTop='8px';
+        day.exercises.forEach(ex => {
+          const exBox = document.createElement('div'); exBox.className='exercise';
+          exBox.innerHTML = `<div><strong>${ex}</strong></div><div class="meta">${suggestDetails(ex)}</div>`;
+          list.appendChild(exBox);
+        });
+        d.appendChild(list);
+        grid.appendChild(d);
+      });
+      container.appendChild(grid);
+      return container;
+    }
+
+    function suggestDetails(name){
+      // heuristic: compound vs isolation
+      const lower = name.toLowerCase();
+      if(lower.includes('sentadilla')||lower.includes('press')||lower.includes('peso muerto')||lower.includes('remo')||lower.includes('dominad')){
+        return 'Ejercicio compuesto — 2–5 min descanso entre series. Priorizar técnica.';
+      }
+      if(lower.includes('plancha')||lower.includes('crunch')||lower.includes('elevación')) return 'Core — 30–60s por serie o 12–20 repeticiones.';
+      if(lower.includes('cardio')||lower.includes('bicicleta')||lower.includes('camina')) return 'Cardio moderado — 20–40 min según nivel.';
+      return 'Ejercicio auxiliar — 60–90s descanso.';
+    }
+
+    function downloadPlan(){
+      if(!lastPlan){ alert('Genera primero una rutina.'); return; }
+      const data = JSON.stringify(lastPlan, null, 2);
+      const blob = new Blob([data], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'plan_rutina.json'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    }
+
+    // Small friendly sample auto-generate on first load
+    window.addEventListener('load', ()=>{ generateRoutine(); });
+  </script>
+</body>
+</html>
